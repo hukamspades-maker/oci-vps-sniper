@@ -92,6 +92,16 @@ def sniper_loop():
     # 60 seconds delay
     INTERVAL = 60
 
+    # Initial notification
+    send_telegram(
+        "🚀 *Render Cloud Sniper Started!*\n\n"
+        "• *Target:* Ubuntu 24.04 (2 OCPU / 12 GB RAM)\n"
+        "• *Region:* ap-singapore-1\n"
+        "• *Interval:* Every 60 seconds\n"
+        "• *Status:* Actively hunting in the cloud 24/7!\n\n"
+        "I will send you an update every *20 attempts* (~20 mins), and immediately alert you when your server is created!"
+    )
+
     while not status["success"]:
         status["attempts"] += 1
         now_str = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
@@ -105,14 +115,14 @@ def sniper_loop():
             status["last_result"] = "SUCCESS! Instance created."
             print(">>> SUCCESS! Instance provisioned.")
 
-            # Send Telegram alert
+            # Send Final Victory Telegram Alert
             tg_msg = (
-                f"🎉 *SUCCESS! Oracle Cloud VPS Created!*\n\n"
-                f"*Instance:* ubuntu24-ampere-2cpu-12gb\n"
-                f"*Shape:* VM.Standard.A1.Flex (2 OCPU / 12 GB RAM)\n"
-                f"*Region:* {region}\n"
-                f"*Instance ID:* `{res.data.id}`\n\n"
-                f"Connect using your SSH key!"
+                "🎉 *SUCCESS! Oracle Cloud VPS Provisioned!* 🎉\n\n"
+                "• *Instance Name:* ubuntu24-ampere-2cpu-12gb\n"
+                "• *Shape:* VM.Standard.A1.Flex (2 OCPU / 12 GB RAM)\n"
+                "• *Region:* ap-singapore-1\n"
+                f"• *Instance ID:* `{res.data.id}`\n\n"
+                "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!"
             )
             send_telegram(tg_msg)
 
@@ -133,12 +143,24 @@ def sniper_loop():
             status["last_result"] = f"Unexpected Error: {str(e)}"
             print(f"[{now_str}] {status['last_result']}")
 
+        # Notify every 20 attempts
+        if status["attempts"] % 20 == 0:
+            update_msg = (
+                f"⏳ *OCI Sniper Live Update (Attempt #{status['attempts']})*\n\n"
+                f"• *Status:* {status['last_result']}\n"
+                f"• *Target:* Ubuntu 24.04 ARM (2 OCPU / 12 GB RAM)\n"
+                f"• *Last Attempt:* {now_str}\n\n"
+                "Still actively hunting in the cloud 24/7!"
+            )
+            send_telegram(update_msg)
+
         time.sleep(INTERVAL)
 
 # Start background thread
 threading.Thread(target=sniper_loop, daemon=True).start()
 
 @app.route("/")
+@app.route("/health")
 def index():
     html = """
     <!DOCTYPE html>
