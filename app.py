@@ -1,16 +1,11 @@
 ﻿import os
 import time
 import threading
-import requests
+import urllib.request
+import urllib.parse
+import json
 from flask import Flask, render_template_string
 import oci
-from oci.compute import ComputeClient
-from oci.compute.models import (
-    LaunchInstanceDetails,
-    LaunchInstanceShapeConfigDetails,
-    InstanceSourceViaImageDetails,
-    CreateVnicDetails,
-)
 
 app = Flask(__name__)
 
@@ -29,17 +24,22 @@ def send_telegram(message):
     if token and chat_id:
         try:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
-            requests.post(url, json={
+            data = urllib.parse.urlencode({
                 "chat_id": chat_id,
                 "text": message,
                 "parse_mode": "Markdown"
-            }, timeout=10)
-            print("Telegram notification sent successfully!")
+            }).encode("utf-8")
+            req = urllib.request.Request(url, data=data)
+            with urllib.request.urlopen(req, timeout=10) as r:
+                print("Telegram notification sent successfully!")
         except Exception as e:
             print(f"Failed to send Telegram: {e}")
 
 def sniper_loop():
+    # Wait 5 seconds for Gunicorn to bind to port
+    time.sleep(5)
     print("Starting OCI Sniper Loop...")
+    
     user_ocid = os.environ.get("OCI_USER")
     tenancy_ocid = os.environ.get("OCI_TENANCY")
     fingerprint = os.environ.get("OCI_FINGERPRINT")
@@ -60,7 +60,7 @@ def sniper_loop():
     }
 
     try:
-        compute_client = ComputeClient(config)
+        compute_client = oci.compute.ComputeClient(config)
     except Exception as e:
         status["last_result"] = f"Configuration Error: {str(e)}"
         print(status["last_result"])
@@ -72,22 +72,22 @@ def sniper_loop():
     image_id = os.environ.get("OCI_IMAGE_ID", "").strip()
     ssh_public_key = os.environ.get("OCI_SSH_PUBLIC_KEY", "").replace("\\n", "\n").strip()
 
-    shape_config = LaunchInstanceShapeConfigDetails(
+    shape_config = oci.compute.models.LaunchInstanceShapeConfigDetails(
         ocpus=2.0,
         memory_in_gbs=12.0
     )
 
-    launch_details = LaunchInstanceDetails(
+    launch_details = oci.compute.models.LaunchInstanceDetails(
         display_name="ubuntu24-ampere-2cpu-12gb",
         compartment_id=compartment_id,
         availability_domain=ad,
         shape="VM.Standard.A1.Flex",
         shape_config=shape_config,
-        source_details=InstanceSourceViaImageDetails(
+        source_details=oci.compute.models.InstanceSourceViaImageDetails(
             image_id=image_id,
             boot_volume_size_in_gbs=50
         ),
-        create_vnic_details=CreateVnicDetails(
+        create_vnic_details=oci.compute.models.CreateVnicDetails(
             subnet_id=subnet_id,
             assign_public_ip=True
         ),
@@ -96,7 +96,6 @@ def sniper_loop():
         }
     )
 
-    # 60 seconds delay
     INTERVAL = 60
 
     # Initial notification
@@ -106,7 +105,7 @@ def sniper_loop():
         "• *Region:* ap-singapore-1\n"
         "• *Interval:* Every 60 seconds\n"
         "• *Status:* Actively hunting in the cloud 24/7!\n\n"
-        "I will send you an update every *20 attempts* (~20 mins), and immediately alert you when your server is created!"
+        "I will send an update every *20 attempts* (~20 mins), and immediately alert you when your server is created!"
     )
 
     while not status["success"]:
@@ -163,8 +162,11 @@ def sniper_loop():
 
         time.sleep(INTERVAL)
 
-# Start background thread
-threading.Thread(target=sniper_loop, daemon=True).start()
+# Start background thread only once
+loop_started = False
+if not loop_started:
+    loop_started = True
+    threading.Thread(target=sniper_loop, daemon=True).start()
 
 @app.route("/")
 @app.route("/health")
