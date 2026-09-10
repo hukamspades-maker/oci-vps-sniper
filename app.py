@@ -4,6 +4,13 @@ import threading
 import requests
 from flask import Flask, render_template_string
 import oci
+from oci.compute import ComputeClient
+from oci.compute.models import (
+    LaunchInstanceDetails,
+    LaunchInstanceShapeConfigDetails,
+    InstanceSourceViaImageDetails,
+    CreateVnicDetails,
+)
 
 app = Flask(__name__)
 
@@ -53,7 +60,7 @@ def sniper_loop():
     }
 
     try:
-        compute_client = oci.compute.ComputeClient(config)
+        compute_client = ComputeClient(config)
     except Exception as e:
         status["last_result"] = f"Configuration Error: {str(e)}"
         print(status["last_result"])
@@ -65,22 +72,22 @@ def sniper_loop():
     image_id = os.environ.get("OCI_IMAGE_ID", "").strip()
     ssh_public_key = os.environ.get("OCI_SSH_PUBLIC_KEY", "").replace("\\n", "\n").strip()
 
-    shape_config = oci.compute.models.LaunchInstanceShapeConfigDetails(
+    shape_config = LaunchInstanceShapeConfigDetails(
         ocpus=2.0,
         memory_in_gbs=12.0
     )
 
-    launch_details = oci.compute.models.LaunchInstanceDetails(
+    launch_details = LaunchInstanceDetails(
         display_name="ubuntu24-ampere-2cpu-12gb",
         compartment_id=compartment_id,
         availability_domain=ad,
         shape="VM.Standard.A1.Flex",
         shape_config=shape_config,
-        source_details=oci.compute.models.InstanceSourceViaImageDetails(
+        source_details=InstanceSourceViaImageDetails(
             image_id=image_id,
             boot_volume_size_in_gbs=50
         ),
-        create_vnic_details=oci.compute.models.CreateVnicDetails(
+        create_vnic_details=CreateVnicDetails(
             subnet_id=subnet_id,
             assign_public_ip=True
         ),
