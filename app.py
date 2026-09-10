@@ -5,7 +5,8 @@ import urllib.request
 import urllib.parse
 import json
 from flask import Flask, render_template_string
-import oci
+import oci.core
+import oci.core.models as models
 
 app = Flask(__name__)
 
@@ -13,7 +14,7 @@ app = Flask(__name__)
 status = {
     "attempts": 0,
     "last_attempt": "Never",
-    "last_result": "Initializing...",
+    "last_result": "Initializing cloud sniper...",
     "success": False,
     "instance_id": None
 }
@@ -36,8 +37,7 @@ def send_telegram(message):
             print(f"Failed to send Telegram: {e}")
 
 def sniper_loop():
-    # Wait 5 seconds for Gunicorn to bind to port
-    time.sleep(5)
+    time.sleep(3)
     print("Starting OCI Sniper Loop...")
     
     user_ocid = os.environ.get("OCI_USER")
@@ -60,7 +60,8 @@ def sniper_loop():
     }
 
     try:
-        compute_client = oci.compute.ComputeClient(config)
+        compute_client = oci.core.ComputeClient(config)
+        print("OCI Compute Client initialized successfully!")
     except Exception as e:
         status["last_result"] = f"Configuration Error: {str(e)}"
         print(status["last_result"])
@@ -72,22 +73,22 @@ def sniper_loop():
     image_id = os.environ.get("OCI_IMAGE_ID", "").strip()
     ssh_public_key = os.environ.get("OCI_SSH_PUBLIC_KEY", "").replace("\\n", "\n").strip()
 
-    shape_config = oci.compute.models.LaunchInstanceShapeConfigDetails(
+    shape_config = models.LaunchInstanceShapeConfigDetails(
         ocpus=2.0,
         memory_in_gbs=12.0
     )
 
-    launch_details = oci.compute.models.LaunchInstanceDetails(
+    launch_details = models.LaunchInstanceDetails(
         display_name="ubuntu24-ampere-2cpu-12gb",
         compartment_id=compartment_id,
         availability_domain=ad,
         shape="VM.Standard.A1.Flex",
         shape_config=shape_config,
-        source_details=oci.compute.models.InstanceSourceViaImageDetails(
+        source_details=models.InstanceSourceViaImageDetails(
             image_id=image_id,
             boot_volume_size_in_gbs=50
         ),
-        create_vnic_details=oci.compute.models.CreateVnicDetails(
+        create_vnic_details=models.CreateVnicDetails(
             subnet_id=subnet_id,
             assign_public_ip=True
         ),
@@ -97,16 +98,6 @@ def sniper_loop():
     )
 
     INTERVAL = 60
-
-    # Initial notification
-    send_telegram(
-        "🚀 *Render Cloud Sniper Started!*\n\n"
-        "• *Target:* Ubuntu 24.04 (2 OCPU / 12 GB RAM)\n"
-        "• *Region:* ap-singapore-1\n"
-        "• *Interval:* Every 60 seconds\n"
-        "• *Status:* Actively hunting in the cloud 24/7!\n\n"
-        "I will send an update every *20 attempts* (~20 mins), and immediately alert you when your server is created!"
-    )
 
     while not status["success"]:
         status["attempts"] += 1
@@ -131,9 +122,6 @@ def sniper_loop():
                 "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!"
             )
             send_telegram(tg_msg)
-
-            # STOP THE LOOP COMPLETELY
-            print("Stopping sniper loop permanently.")
             break
 
         except oci.exceptions.ServiceError as e:
@@ -162,11 +150,8 @@ def sniper_loop():
 
         time.sleep(INTERVAL)
 
-# Start background thread only once
-loop_started = False
-if not loop_started:
-    loop_started = True
-    threading.Thread(target=sniper_loop, daemon=True).start()
+# Start background thread once
+threading.Thread(target=sniper_loop, daemon=True).start()
 
 @app.route("/")
 @app.route("/health")
