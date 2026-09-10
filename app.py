@@ -10,14 +10,16 @@ import oci.core.models as models
 
 app = Flask(__name__)
 
-# State tracking
 status = {
     "attempts": 0,
     "last_attempt": "Never",
-    "last_result": "Initializing cloud sniper...",
+    "last_result": "Cloud sniper starting...",
     "success": False,
     "instance_id": None
 }
+
+thread_started = False
+thread_lock = threading.Lock()
 
 def send_telegram(message):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -37,8 +39,8 @@ def send_telegram(message):
             print(f"Failed to send Telegram: {e}")
 
 def sniper_loop():
-    time.sleep(3)
-    print("Starting OCI Sniper Loop...")
+    print("Starting OCI Sniper Loop inside worker...")
+    status["last_result"] = "Connecting to Oracle Cloud API..."
     
     user_ocid = os.environ.get("OCI_USER")
     tenancy_ocid = os.environ.get("OCI_TENANCY")
@@ -150,8 +152,13 @@ def sniper_loop():
 
         time.sleep(INTERVAL)
 
-# Start background thread once
-threading.Thread(target=sniper_loop, daemon=True).start()
+@app.before_request
+def start_sniper():
+    global thread_started
+    with thread_lock:
+        if not thread_started:
+            thread_started = True
+            threading.Thread(target=sniper_loop, daemon=True).start()
 
 @app.route("/")
 @app.route("/health")
