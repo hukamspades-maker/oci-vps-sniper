@@ -88,7 +88,7 @@ def sniper_loop():
         shape_config=shape_config,
         source_details=models.InstanceSourceViaImageDetails(
             image_id=image_id,
-            boot_volume_size_in_gbs=50
+            boot_volume_size_in_gbs=100
         ),
         create_vnic_details=models.CreateVnicDetails(
             subnet_id=subnet_id,
@@ -118,7 +118,7 @@ def sniper_loop():
             tg_msg = (
                 "🎉 *SUCCESS! Oracle Cloud VPS Provisioned!* 🎉\n\n"
                 "• *Instance Name:* ubuntu24-ampere-1cpu-6gb\n"
-                "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 6 GB RAM)\n"
+                "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 6 GB RAM / 100 GB Disk)\n"
                 "• *Region:* ap-singapore-1\n"
                 f"• *Instance ID:* `{res.data.id}`\n\n"
                 "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!\n\n"
@@ -145,7 +145,7 @@ def sniper_loop():
             update_msg = (
                 f"⏳ *OCI Sniper Live Update (Attempt #{status['attempts']})*\n\n"
                 f"• *Status:* {status['last_result']}\n"
-                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM)\n"
+                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM / 100 GB Disk)\n"
                 f"• *Last Attempt:* {now_str}\n\n"
                 "Still actively hunting in the cloud 24/7!"
             )
@@ -182,7 +182,7 @@ def index():
     <body>
         <div class="card">
             <h2>Oracle Cloud Free Tier VPS Sniper</h2>
-            <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM) - Singapore</p>
+            <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM / 100 GB Disk) - Singapore</p>
             <p><strong>Total Attempts:</strong> {{ attempts }}</p>
             <p><strong>Last Attempt:</strong> {{ last_attempt }}</p>
             <p><strong>Status:</strong> <span class="badge {{ 'success' if success else 'running' }}">{{ last_result }}</span></p>
