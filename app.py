@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import threading
 import urllib.request
@@ -76,12 +76,12 @@ def sniper_loop():
     ssh_public_key = os.environ.get("OCI_SSH_PUBLIC_KEY", "").replace("\\n", "\n").strip()
 
     shape_config = models.LaunchInstanceShapeConfigDetails(
-        ocpus=2.0,
-        memory_in_gbs=12.0
+        ocpus=1.0,
+        memory_in_gbs=6.0
     )
 
     launch_details = models.LaunchInstanceDetails(
-        display_name="ubuntu24-ampere-2cpu-12gb",
+        display_name="ubuntu24-ampere-1cpu-6gb",
         compartment_id=compartment_id,
         availability_domain=ad,
         shape="VM.Standard.A1.Flex",
@@ -99,7 +99,7 @@ def sniper_loop():
         }
     )
 
-    INTERVAL = 60
+    INTERVAL = 65
 
     while not status["success"]:
         status["attempts"] += 1
@@ -117,18 +117,19 @@ def sniper_loop():
             # Send Final Victory Telegram Alert
             tg_msg = (
                 "🎉 *SUCCESS! Oracle Cloud VPS Provisioned!* 🎉\n\n"
-                "• *Instance Name:* ubuntu24-ampere-2cpu-12gb\n"
-                "• *Shape:* VM.Standard.A1.Flex (2 OCPU / 12 GB RAM)\n"
+                "• *Instance Name:* ubuntu24-ampere-1cpu-6gb\n"
+                "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 6 GB RAM)\n"
                 "• *Region:* ap-singapore-1\n"
                 f"• *Instance ID:* `{res.data.id}`\n\n"
-                "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!"
+                "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!\n\n"
+                "💡 *Tip:* You can easily resize it up to 2-4 OCPU / 12-24 GB in the Oracle Console anytime later."
             )
             send_telegram(tg_msg)
             break
 
         except oci.exceptions.ServiceError as e:
             if "Out of host capacity" in e.message or e.status == 500:
-                status["last_result"] = "Out of host capacity (Retrying in 60s)"
+                status["last_result"] = "Out of host capacity (Retrying in 65s)"
             elif e.status == 429:
                 status["last_result"] = "Rate limited (Backing off 45s)"
                 time.sleep(45)
@@ -144,7 +145,7 @@ def sniper_loop():
             update_msg = (
                 f"⏳ *OCI Sniper Live Update (Attempt #{status['attempts']})*\n\n"
                 f"• *Status:* {status['last_result']}\n"
-                f"• *Target:* Ubuntu 24.04 ARM (2 OCPU / 12 GB RAM)\n"
+                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM)\n"
                 f"• *Last Attempt:* {now_str}\n\n"
                 "Still actively hunting in the cloud 24/7!"
             )
@@ -181,7 +182,7 @@ def index():
     <body>
         <div class="card">
             <h2>Oracle Cloud Free Tier VPS Sniper</h2>
-            <p><strong>Target:</strong> Ubuntu 24.04 ARM (2 OCPU / 12 GB RAM) - Singapore</p>
+            <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM) - Singapore</p>
             <p><strong>Total Attempts:</strong> {{ attempts }}</p>
             <p><strong>Last Attempt:</strong> {{ last_attempt }}</p>
             <p><strong>Status:</strong> <span class="badge {{ 'success' if success else 'running' }}">{{ last_result }}</span></p>
