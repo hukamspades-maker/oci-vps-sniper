@@ -48,7 +48,7 @@ def telegram_listener_loop():
     # Send quick startup ping so user knows it's online
     startup_msg = (
         "🟢 *OCI VPS Sniper Online & Hunting!*\n\n"
-        "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB / 100 GB)\n"
+        "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
         "• *Region:* ap-singapore-1\n\n"
         "💬 *You can send me any message or `/status` anytime to get live progress!*"
     )
@@ -78,7 +78,7 @@ def telegram_listener_loop():
                             "🤖 *OCI VPS Sniper Status*\n\n"
                             f"• *Current Status:* {last_res}\n"
                             f"• *Total Attempts:* `{attempts}`\n"
-                            f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB / 100 GB)\n"
+                            f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
                             f"• *Last Attempt:* {now_str}\n\n"
                             "Hunting 24/7 on autopilot in Singapore!"
                         )
@@ -125,11 +125,11 @@ def sniper_loop():
 
     shape_config = models.LaunchInstanceShapeConfigDetails(
         ocpus=1.0,
-        memory_in_gbs=6.0
+        memory_in_gbs=1.0
     )
 
     launch_details = models.LaunchInstanceDetails(
-        display_name="ubuntu24-ampere-1cpu-6gb",
+        display_name="ubuntu24-ampere-1cpu-1gb",
         compartment_id=compartment_id,
         availability_domain=ad,
         shape="VM.Standard.A1.Flex",
@@ -165,8 +165,8 @@ def sniper_loop():
             # Send Final Victory Telegram Alert
             tg_msg = (
                 "🎉 *SUCCESS! Oracle Cloud VPS Provisioned!* 🎉\n\n"
-                "• *Instance Name:* ubuntu24-ampere-1cpu-6gb\n"
-                "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 6 GB RAM / 100 GB Disk)\n"
+                "• *Instance Name:* ubuntu24-ampere-1cpu-1gb\n"
+                "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 1 GB RAM / 100 GB Disk)\n"
                 "• *Region:* ap-singapore-1\n"
                 f"• *Instance ID:* `{res.data.id}`\n\n"
                 "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!\n\n"
@@ -193,7 +193,7 @@ def sniper_loop():
             update_msg = (
                 f"⏳ *OCI Sniper Live Update (Attempt #{status['attempts']})*\n\n"
                 f"• *Status:* {status['last_result']}\n"
-                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM / 100 GB Disk)\n"
+                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB RAM / 100 GB Disk)\n"
                 f"• *Last Attempt:* {now_str}\n\n"
                 "Still actively hunting in the cloud 24/7!"
             )
@@ -231,7 +231,7 @@ def index():
     <body>
         <div class="card">
             <h2>Oracle Cloud Free Tier VPS Sniper</h2>
-            <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 6 GB RAM / 100 GB Disk) - Singapore</p>
+            <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 1 GB RAM / 100 GB Disk) - Singapore</p>
             <p><strong>Total Attempts:</strong> {{ attempts }}</p>
             <p><strong>Last Attempt:</strong> {{ last_attempt }}</p>
             <p><strong>Status:</strong> <span class="badge {{ 'success' if success else 'running' }}">{{ last_result }}</span></p>
