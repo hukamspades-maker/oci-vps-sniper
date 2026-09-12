@@ -15,23 +15,34 @@ status = {
     "last_attempt": "Never",
     "last_result": "Cloud sniper starting...",
     "success": False,
-    "instance_id": None
+    "instance_id": None,
+    "is_running": True
 }
 
 thread_started = False
 thread_lock = threading.Lock()
 
-def send_telegram(message):
+BOT_KEYBOARD = {
+    "keyboard": [
+        [{"text": "📊 Status"}, {"text": "⏸️ Stop"}, {"text": "▶️ Start"}]
+    ],
+    "resize_keyboard": True
+}
+
+def send_telegram(message, reply_markup=None):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
     if token and chat_id:
         try:
             url = f"https://api.telegram.org/bot{token}/sendMessage"
-            data = urllib.parse.urlencode({
+            payload = {
                 "chat_id": chat_id,
                 "text": message,
                 "parse_mode": "Markdown"
-            }).encode("utf-8")
+            }
+            if reply_markup:
+                payload["reply_markup"] = json.dumps(reply_markup)
+            data = urllib.parse.urlencode(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data)
             with urllib.request.urlopen(req, timeout=10) as r:
                 print("Telegram notification sent successfully!")
@@ -45,14 +56,14 @@ def telegram_listener_loop():
     last_update_id = 0
     print("Telegram interactive listener started...")
     
-    # Send quick startup ping so user knows it's online
+    # Send quick startup ping with control buttons
     startup_msg = (
-        "🟢 *OCI VPS Sniper Online & Hunting!*\n\n"
+        "🟢 *OCI VPS Sniper Online & Ready!*\n\n"
         "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
         "• *Region:* ap-singapore-1\n\n"
-        "💬 *You can send me any message or `/status` anytime to get live progress!*"
+        "🎮 *Control Buttons:* Use the buttons below to Check Status, Pause, or Resume hunting anytime!"
     )
-    send_telegram(startup_msg)
+    send_telegram(startup_msg, reply_markup=BOT_KEYBOARD)
 
     while True:
         try:
@@ -71,18 +82,49 @@ def telegram_listener_loop():
                     text = msg.get("text", "").strip()
                     
                     if sender_chat_id and text:
-                        now_str = status.get("last_attempt", "Initializing...")
-                        attempts = status.get("attempts", 0)
-                        last_res = status.get("last_result", "Hunting...")
-                        reply = (
-                            "🤖 *OCI VPS Sniper Status*\n\n"
-                            f"• *Current Status:* {last_res}\n"
-                            f"• *Total Attempts:* `{attempts}`\n"
-                            f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
-                            f"• *Last Attempt:* {now_str}\n\n"
-                            "Hunting 24/7 on autopilot in Singapore!"
-                        )
-                        send_telegram(reply)
+                        cmd = text.strip().lower()
+                        
+                        # Stop / Pause command
+                        if any(k in cmd for k in ["stop", "pause", "⏸"]):
+                            status["is_running"] = False
+                            status["last_result"] = "Paused by user via Telegram (/start to resume)"
+                            reply = (
+                                "⏸️ *OCI VPS Sniper Paused!*\n\n"
+                                f"• *Total Attempts:* `{status.get('attempts', 0)}`\n"
+                                "• *State:* Sleeping (no requests being sent to Oracle)\n\n"
+                                "Tap *▶️ Start* or send `/start` anytime to resume hunting!"
+                            )
+                            send_telegram(reply, reply_markup=BOT_KEYBOARD)
+
+                        # Start / Resume command
+                        elif any(k in cmd for k in ["start", "resume", "▶", "run"]):
+                            status["is_running"] = True
+                            status["last_result"] = "Resumed by user via Telegram"
+                            reply = (
+                                "▶️ *OCI VPS Sniper Resumed!*\n\n"
+                                "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
+                                "• *Region:* ap-singapore-1\n"
+                                f"• *Attempts so far:* `{status.get('attempts', 0)}`\n\n"
+                                "Actively hunting in Singapore! Tap *⏸️ Stop* to pause anytime."
+                            )
+                            send_telegram(reply, reply_markup=BOT_KEYBOARD)
+
+                        # Status / default
+                        else:
+                            state_str = "🟢 Active (Hunting)" if status.get("is_running", True) else "⏸️ Paused"
+                            now_str = status.get("last_attempt", "Initializing...")
+                            attempts = status.get("attempts", 0)
+                            last_res = status.get("last_result", "Hunting...")
+                            reply = (
+                                "🤖 *OCI VPS Sniper Status*\n\n"
+                                f"• *State:* {state_str}\n"
+                                f"• *Current Status:* {last_res}\n"
+                                f"• *Total Attempts:* `{attempts}`\n"
+                                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 100 GB)\n"
+                                f"• *Last Attempt:* {now_str}\n\n"
+                                "Use the buttons below to control:"
+                            )
+                            send_telegram(reply, reply_markup=BOT_KEYBOARD)
         except Exception as e:
             time.sleep(5)
 
@@ -150,6 +192,11 @@ def sniper_loop():
     INTERVAL = 65
 
     while not status["success"]:
+        # Check if paused by user via Telegram
+        if not status.get("is_running", True):
+            time.sleep(3)
+            continue
+
         status["attempts"] += 1
         now_str = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
         status["last_attempt"] = now_str
@@ -197,7 +244,7 @@ def sniper_loop():
                 f"• *Last Attempt:* {now_str}\n\n"
                 "Still actively hunting in the cloud 24/7!"
             )
-            send_telegram(update_msg)
+            send_telegram(update_msg, reply_markup=BOT_KEYBOARD)
 
         time.sleep(INTERVAL)
 
@@ -225,6 +272,7 @@ def index():
             h2 { margin-top: 0; color: #38bdf8; }
             .badge { display: inline-block; padding: 6px 12px; border-radius: 9999px; font-weight: bold; }
             .running { background: #ca8a04; color: #fef08a; }
+            .paused { background: #991b1b; color: #fecaca; }
             .success { background: #16a34a; color: #bbf7d0; }
         </style>
     </head>
@@ -234,7 +282,7 @@ def index():
             <p><strong>Target:</strong> Ubuntu 24.04 ARM (1 OCPU / 1 GB RAM / 100 GB Disk) - Singapore</p>
             <p><strong>Total Attempts:</strong> {{ attempts }}</p>
             <p><strong>Last Attempt:</strong> {{ last_attempt }}</p>
-            <p><strong>Status:</strong> <span class="badge {{ 'success' if success else 'running' }}">{{ last_result }}</span></p>
+            <p><strong>Status:</strong> <span class="badge {{ 'success' if success else ('running' if is_running else 'paused') }}">{{ last_result }}</span></p>
             {% if instance_id %}
                 <h3 style="color: #4ade80;">Instance Created!</h3>
                 <p><code>{{ instance_id }}</code></p>
