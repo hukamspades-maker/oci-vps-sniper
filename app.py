@@ -38,6 +38,54 @@ def send_telegram(message):
         except Exception as e:
             print(f"Failed to send Telegram: {e}")
 
+def telegram_listener_loop():
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    if not token:
+        return
+    last_update_id = 0
+    print("Telegram interactive listener started...")
+    
+    # Send quick startup ping so user knows it's online
+    startup_msg = (
+        "🟢 *OCI VPS Sniper Online & Hunting!*\n\n"
+        "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB / 100 GB)\n"
+        "• *Region:* ap-singapore-1\n\n"
+        "💬 *You can send me any message or `/status` anytime to get live progress!*"
+    )
+    send_telegram(startup_msg)
+
+    while True:
+        try:
+            url = f"https://api.telegram.org/bot{token}/getUpdates?offset={last_update_id + 1}&timeout=15"
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                res = json.loads(r.read().decode("utf-8"))
+                for update in res.get("result", []):
+                    update_id = update.get("update_id", 0)
+                    if update_id > last_update_id:
+                        last_update_id = update_id
+                    
+                    msg = update.get("message", {})
+                    chat = msg.get("chat", {})
+                    sender_chat_id = chat.get("id")
+                    text = msg.get("text", "").strip()
+                    
+                    if sender_chat_id and text:
+                        now_str = status.get("last_attempt", "Initializing...")
+                        attempts = status.get("attempts", 0)
+                        last_res = status.get("last_result", "Hunting...")
+                        reply = (
+                            "🤖 *OCI VPS Sniper Status*\n\n"
+                            f"• *Current Status:* {last_res}\n"
+                            f"• *Total Attempts:* `{attempts}`\n"
+                            f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 6 GB / 100 GB)\n"
+                            f"• *Last Attempt:* {now_str}\n\n"
+                            "Hunting 24/7 on autopilot in Singapore!"
+                        )
+                        send_telegram(reply)
+        except Exception as e:
+            time.sleep(5)
+
 def sniper_loop():
     print("Starting OCI Sniper Loop inside worker...")
     status["last_result"] = "Connecting to Oracle Cloud API..."
@@ -160,6 +208,7 @@ def start_sniper():
         if not thread_started:
             thread_started = True
             threading.Thread(target=sniper_loop, daemon=True).start()
+            threading.Thread(target=telegram_listener_loop, daemon=True).start()
 
 @app.route("/")
 @app.route("/health")
