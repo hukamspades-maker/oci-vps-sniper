@@ -4,6 +4,7 @@ import threading
 import urllib.request
 import urllib.parse
 import json
+import random
 from flask import Flask, render_template_string
 import oci.core
 import oci.core.models as models
@@ -16,7 +17,8 @@ status = {
     "last_result": "Cloud sniper starting...",
     "success": False,
     "instance_id": None,
-    "is_running": True
+    "is_running": True,
+    "public_ip": None
 }
 
 thread_started = False
@@ -56,11 +58,11 @@ def telegram_listener_loop():
     last_update_id = 0
     print("Telegram interactive listener started...")
     
-    # Send quick startup ping with control buttons
     startup_msg = (
         "🟢 *OCI VPS Sniper Online & Ready!*\n\n"
         "• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB / 50 GB)\n"
-        "• *Region:* ap-singapore-1\n\n"
+        "• *Region:* ap-singapore-1\n"
+        "• *Retry:* Every 35-55s with random jitter\n\n"
         "🎮 *Control Buttons:* Use the buttons below to Check Status, Pause, or Resume hunting anytime!"
     )
     send_telegram(startup_msg, reply_markup=BOT_KEYBOARD)
@@ -84,7 +86,6 @@ def telegram_listener_loop():
                     if sender_chat_id and text:
                         cmd = text.strip().lower()
                         
-                        # Stop / Pause command
                         if any(k in cmd for k in ["stop", "pause", "⏸"]):
                             status["is_running"] = False
                             status["last_result"] = "Paused by user via Telegram (/start to resume)"
@@ -96,7 +97,6 @@ def telegram_listener_loop():
                             )
                             send_telegram(reply, reply_markup=BOT_KEYBOARD)
 
-                        # Start / Resume command
                         elif any(k in cmd for k in ["start", "resume", "▶", "run"]):
                             status["is_running"] = True
                             status["last_result"] = "Resumed by user via Telegram"
@@ -109,7 +109,6 @@ def telegram_listener_loop():
                             )
                             send_telegram(reply, reply_markup=BOT_KEYBOARD)
 
-                        # Status / default
                         else:
                             state_str = "🟢 Active (Hunting)" if status.get("is_running", True) else "⏸️ Paused"
                             now_str = status.get("last_attempt", "Initializing...")
@@ -153,7 +152,8 @@ def sniper_loop():
 
     try:
         compute_client = oci.core.ComputeClient(config)
-        print("OCI Compute Client initialized successfully!")
+        network_client = oci.core.VirtualNetworkClient(config)
+        print("OCI Clients initialized successfully!")
     except Exception as e:
         status["last_result"] = f"Configuration Error: {str(e)}"
         print(status["last_result"])
@@ -189,10 +189,11 @@ def sniper_loop():
         }
     )
 
-    INTERVAL = 65
+    BASE_INTERVAL = 35
+    MAX_JITTER = 20
+    consecutive_429 = 0
 
     while not status["success"]:
-        # Check if paused by user via Telegram
         if not status.get("is_running", True):
             time.sleep(3)
             continue
@@ -209,44 +210,68 @@ def sniper_loop():
             status["last_result"] = "SUCCESS! Instance created."
             print(">>> SUCCESS! Instance provisioned.")
 
-            # Send Final Victory Telegram Alert
+            # Try to get the public IP
+            public_ip = "Pending..."
+            try:
+                time.sleep(15)
+                vnic_attachments = compute_client.list_vnic_attachments(
+                    compartment_id=compartment_id,
+                    instance_id=res.data.id
+                ).data
+                if vnic_attachments:
+                    vnic = network_client.get_vnic(vnic_attachments[0].vnic_id).data
+                    public_ip = vnic.public_ip or "No public IP"
+                    status["public_ip"] = public_ip
+            except Exception:
+                public_ip = "Check Oracle Console"
+
             tg_msg = (
                 "🎉 *SUCCESS! Oracle Cloud VPS Provisioned!* 🎉\n\n"
                 "• *Instance Name:* ubuntu24-ampere-1cpu-1gb\n"
                 "• *Shape:* VM.Standard.A1.Flex (1 OCPU / 1 GB RAM / 50 GB Disk)\n"
                 "• *Region:* ap-singapore-1\n"
-                f"• *Instance ID:* `{res.data.id}`\n\n"
-                "✅ *Sniper stopped automatically.* You can now connect via SSH with your key in `Desktop\\Oracle_VPS_Keys_Backup`!\n\n"
-                "💡 *Tip:* You can easily resize it up to 2-4 OCPU / 12-24 GB in the Oracle Console anytime later."
+                f"• *Instance ID:* `{res.data.id}`\n"
+                f"• *Public IP:* `{public_ip}`\n\n"
+                "✅ *Sniper stopped automatically.*\n\n"
+                f"🔑 *Connect:* `ssh -i oracle_vps_id_rsa ubuntu@{public_ip}`\n\n"
+                "💡 *Tip:* You can resize up to 4 OCPU / 24 GB in the Oracle Console anytime."
             )
             send_telegram(tg_msg)
             break
 
         except oci.exceptions.ServiceError as e:
             if "Out of host capacity" in e.message or e.status == 500:
-                status["last_result"] = "Out of host capacity (Retrying in 65s)"
+                consecutive_429 = 0
+                status["last_result"] = f"Out of host capacity (Attempt #{status['attempts']})"
             elif e.status == 429:
-                status["last_result"] = "Rate limited (Backing off 45s)"
-                time.sleep(45)
+                consecutive_429 += 1
+                backoff = min(45 + (consecutive_429 * 15), 120)
+                status["last_result"] = f"Rate limited (Backing off {backoff}s)"
+                time.sleep(backoff)
+            elif "LimitExceeded" in str(e.code) or "quota" in e.message.lower():
+                status["last_result"] = f"Quota/Limit Error: {e.message}"
+                send_telegram(f"⚠️ *Quota Error:* {e.message}\n\nSniper continues but this may need manual fix.", reply_markup=BOT_KEYBOARD)
             else:
-                status["last_result"] = f"Error: {e.message}"
+                status["last_result"] = f"Error ({e.status}): {e.message[:100]}"
             print(f"[{now_str}] {status['last_result']}")
         except Exception as e:
-            status["last_result"] = f"Unexpected Error: {str(e)}"
+            status["last_result"] = f"Unexpected Error: {str(e)[:100]}"
             print(f"[{now_str}] {status['last_result']}")
 
-        # Notify every 20 attempts
-        if status["attempts"] % 20 == 0:
+        # Notify every 50 attempts
+        if status["attempts"] % 50 == 0:
             update_msg = (
-                f"⏳ *OCI Sniper Live Update (Attempt #{status['attempts']})*\n\n"
+                f"⏳ *OCI Sniper Update (Attempt #{status['attempts']})*\n\n"
                 f"• *Status:* {status['last_result']}\n"
-                f"• *Target:* Ubuntu 24.04 ARM (1 OCPU / 1 GB RAM / 50 GB Disk)\n"
-                f"• *Last Attempt:* {now_str}\n\n"
-                "Still actively hunting in the cloud 24/7!"
+                f"• *Target:* 1 OCPU / 1 GB / 50 GB - Singapore\n"
+                f"• *Last Try:* {now_str}\n\n"
+                "Still hunting 24/7! 🎯"
             )
             send_telegram(update_msg, reply_markup=BOT_KEYBOARD)
 
-        time.sleep(INTERVAL)
+        # Random jitter: 35-55 seconds between attempts
+        jitter = random.randint(0, MAX_JITTER)
+        time.sleep(BASE_INTERVAL + jitter)
 
 @app.before_request
 def start_sniper():
@@ -286,6 +311,7 @@ def index():
             {% if instance_id %}
                 <h3 style="color: #4ade80;">Instance Created!</h3>
                 <p><code>{{ instance_id }}</code></p>
+                {% if public_ip %}<p><strong>Public IP:</strong> <code>{{ public_ip }}</code></p>{% endif %}
             {% endif %}
         </div>
     </body>
